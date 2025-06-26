@@ -62,6 +62,40 @@ def find_phpstorm_executable():
     
     return None
 
+def parse_phpstorm_url(url):
+    """Parse phpstorm:// URL và trích xuất file path và parameters"""
+    try:
+        # Parse URL
+        parsed = urllib.parse.urlparse(url)
+        
+        if parsed.scheme != 'phpstorm':
+            print(f"⚠️  URL scheme không hợp lệ: {parsed.scheme}")
+            return None, {}
+        
+        # Parse query parameters
+        params = urllib.parse.parse_qs(parsed.query)
+        
+        # Lấy file path và decode URL encoding
+        file_path = params.get('file', [''])[0]
+        if file_path:
+            file_path = urllib.parse.unquote(file_path)
+        
+        # Lấy các parameters khác
+        line = params.get('line', [''])[0]
+        column = params.get('column', [''])[0]
+        
+        result_params = {}
+        if line:
+            result_params['line'] = line
+        if column:
+            result_params['column'] = column
+            
+        return file_path, result_params
+        
+    except Exception as e:
+        print(f"❌ Lỗi khi parse URL: {e}")
+        return None, {}
+
 def open_in_phpstorm(url):
     # Tự động tìm đường dẫn PhpStorm
     phpstorm_path = find_phpstorm_executable()
@@ -71,15 +105,48 @@ def open_in_phpstorm(url):
         print("Hãy đảm bảo PhpStorm đã được cài đặt hoặc thêm vào PATH")
         return
     
-    # Tạo lệnh mở tệp trong PhpStorm
-    command = f'"{phpstorm_path}" "{url}"'
+    # Parse phpstorm:// URL
+    file_path, params = parse_phpstorm_url(url)
+    
+    if not file_path:
+        print("❌ Không thể lấy file path từ URL")
+        return
+    
+    # Kiểm tra file có tồn tại không
+    if not os.path.exists(file_path):
+        print(f"⚠️  File không tồn tại: {file_path}")
+        print("Vẫn sẽ thử mở trong PhpStorm...")
+    
+    # Xây dựng command với arguments
+    command_parts = [f'"{phpstorm_path}"']
+    
+    # Thêm line number nếu có
+    if 'line' in params:
+        command_parts.append(f'--line {params["line"]}')
+    
+    # Thêm column number nếu có
+    if 'column' in params:
+        command_parts.append(f'--column {params["column"]}')
+    
+    # Thêm file path (luôn cuối cùng)
+    command_parts.append(f'"{file_path}"')
+    
+    command = ' '.join(command_parts)
+    
+    # In thông tin debug
+    print(f"📄 File: {file_path}")
+    if 'line' in params:
+        print(f"📍 Line: {params['line']}")
+    if 'column' in params:
+        print(f"📍 Column: {params['column']}")
+    print(f"🚀 Command: {command}")
     
     # Thực thi lệnh
     try:
         subprocess.run(command, shell=True)
-        print(f"Đã mở URL trong PhpStorm: {url}")
+        print(f"✅ Đã mở file trong PhpStorm")
     except Exception as e:
-        print(f"Lỗi khi mở PhpStorm: {e}")
+        print(f"❌ Lỗi khi mở PhpStorm: {e}")
 
 def check_registry_configuration():
     """Kiểm tra cấu hình registry hiện tại"""
@@ -156,37 +223,81 @@ def verify_and_update_registry():
             print("Bỏ qua việc cập nhật registry")
             return False
 
-def generate_registry_file():
-    """Tạo file .reg với cấu hình đúng"""
+def generate_registry_file(mode="python"):
+    """Tạo file .reg với cấu hình đúng
+    
+    Args:
+        mode (str): "python" để dùng main.py, "direct" để gọi trực tiếp phpstorm64.exe
+    """
     phpstorm_path = find_phpstorm_executable()
     if not phpstorm_path:
         print("❌ Không tìm thấy PhpStorm")
         return
     
-    # Escape backslashes cho file .reg
-    escaped_path = phpstorm_path.replace('\\', '\\\\')
+    if mode == "python":
+        # Tìm Python executable
+        python_path = sys.executable
+        script_path = os.path.abspath(__file__)
+        
+        # Escape backslashes cho file .reg
+        escaped_python = python_path.replace('\\', '\\\\')
+        escaped_script = script_path.replace('\\', '\\\\')
+        
+        command_value = f'\\"{escaped_python}\\" \\"{escaped_script}\\" \\"%1\\"'
+        file_suffix = "python"
+        description = "Sử dụng main.py để parse URL và gọi PhpStorm"
+        
+    elif mode == "direct":
+        # Escape backslashes cho file .reg
+        escaped_path = phpstorm_path.replace('\\', '\\\\')
+        command_value = f'\\"{escaped_path}\\" \\"%1\\"'
+        file_suffix = "direct"
+        description = "Gọi trực tiếp PhpStorm (PhpStorm tự parse URL)"
+    
+    else:
+        print("❌ Mode không hợp lệ. Chọn 'python' hoặc 'direct'")
+        return
     
     reg_content = f'''Windows Registry Editor Version 5.00
 
 [HKEY_CLASSES_ROOT\\phpstorm]
 @="URL:PhpStorm Protocol"
-"URL Protocol"="")
+"URL Protocol"=""
 
 [HKEY_CLASSES_ROOT\\phpstorm\\shell]
 
 [HKEY_CLASSES_ROOT\\phpstorm\\shell\\open]
 
 [HKEY_CLASSES_ROOT\\phpstorm\\shell\\open\\command]
-@="\\"{escaped_path}\\" \\"%1\\""
+@="{command_value}"
 '''
     
-    reg_file_path = os.path.join(os.path.dirname(__file__), "setupReg-auto.reg")
+    reg_file_path = os.path.join(os.path.dirname(__file__), f"setupReg-{file_suffix}.reg")
     with open(reg_file_path, 'w', encoding='utf-8') as f:
         f.write(reg_content)
     
     print(f"✅ Đã tạo file registry: {reg_file_path}")
-    print(f"📝 Nội dung file:")
+    print(f"📝 Mô tả: {description}")
+    print(f"🔧 Command: {command_value.replace('\\\\', '\\').replace('\\\"', '\"')}")
+    print(f"📄 Nội dung file:")
     print(reg_content)
+
+def generate_both_registry_files():
+    """Tạo cả 2 loại registry file"""
+    print("🔧 Tạo registry file cho Python script:")
+    print("=" * 50)
+    generate_registry_file("python")
+    
+    print("\n" + "=" * 50)
+    print("🔧 Tạo registry file cho PhpStorm trực tiếp:")
+    print("=" * 50)
+    generate_registry_file("direct")
+    
+    print("\n" + "=" * 50)
+    print("📋 Hướng dẫn sử dụng:")
+    print("• setupReg-python.reg: Dùng main.py để parse URL (khuyến nghị)")
+    print("• setupReg-direct.reg: Gọi trực tiếp PhpStorm")
+    print("• Chỉ import 1 trong 2 file vào Registry")
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
@@ -195,7 +306,11 @@ if __name__ == "__main__":
         if command == "--check-registry":
             verify_and_update_registry()
         elif command == "--generate-reg":
-            generate_registry_file()
+            generate_both_registry_files()
+        elif command == "--generate-python":
+            generate_registry_file("python")
+        elif command == "--generate-direct":
+            generate_registry_file("direct")
         elif command.startswith("phpstorm://"):
             open_in_phpstorm(command)
         else:
@@ -205,4 +320,6 @@ if __name__ == "__main__":
         print("📖 Cách sử dụng:")
         print("  python main.py 'phpstorm://open?file=...'  - Mở URL trong PhpStorm")
         print("  python main.py --check-registry           - Kiểm tra và cập nhật registry")
-        print("  python main.py --generate-reg             - Tạo file .reg tự động")
+        print("  python main.py --generate-reg             - Tạo cả 2 loại file .reg")
+        print("  python main.py --generate-python          - Tạo file .reg cho Python script")
+        print("  python main.py --generate-direct          - Tạo file .reg cho PhpStorm trực tiếp")

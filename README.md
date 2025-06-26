@@ -21,15 +21,15 @@ Một công cụ Python để xử lý URL protocol `phpstorm://` và tự độ
 ## 🛠️ Cài đặt
 
 1. **Clone hoặc download project**:
-   ```bash
-   git clone <repository-url>
-   cd phpstorm-protocal
-   ```
+```bash
+git clone <repository-url>
+cd phpstorm-protocal
+```
 
 2. **Kiểm tra PhpStorm đã được cài đặt**:
-   ```bash
-   python main.py --check-registry
-   ```
+```bash
+python main.py --check-registry
+```
 
 ## 📖 Hướng dẫn sử dụng
 

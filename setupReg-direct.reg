@@ -1,0 +1,12 @@
+Windows Registry Editor Version 5.00
+
+[HKEY_CLASSES_ROOT\phpstorm]
+@="URL:PhpStorm Protocol"
+"URL Protocol"=""
+
+[HKEY_CLASSES_ROOT\phpstorm\shell]
+
+[HKEY_CLASSES_ROOT\phpstorm\shell\open]
+
+[HKEY_CLASSES_ROOT\phpstorm\shell\open\command]
+@="\"C:\\Program Files\\JetBrains\\PhpStorm 2025.1.2\\bin\\phpstorm64.exe\" \"%1\""
